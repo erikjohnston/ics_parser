@@ -1,0 +1,15 @@
+[package]
+name = "ics_parser"
+version = "0.1.0"
+authors = ["Erik Johnston <crates@jki.re>"]
+edition = "2018"
+
+[dependencies]
+pest = "2.1.3"
+pest_derive = "2.1.0"
+url = "2.1.1"
+chrono = "0.4.15"
+base64 = "0.12.3"
+regex = "1.4.1"
+itertools = "0.9.0"
+anyhow = "1.0.38"

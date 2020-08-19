@@ -1,0 +1,26 @@
+// Most of the weirdness here is to handle the folding rules. We do this in the
+// grammar (rather than a preprocessing step) so that the line/character
+// position information remains correct.
+
+WHITESPACE = _{ " " | "\t" | ( NEWLINE+ ~ (" " | "\t" )+ ) }
+
+name = { ( ( NEWLINE+ ~ ( " " | "\t" )+ ) |  ASCII_ALPHANUMERIC | "-" )+ }
+safe_string = { FOLDABLE_SAFE_CHARACTER* }
+quoted_string = { "\"" ~ FOLDABLE_QUOTED_CHARACTER* ~ "\"" }
+
+FOLDABLE_SAFE_CHARACTER = { ( NEWLINE+ ~ ( " " | "\t" ) ) | ( !( "\"" | "`" | ":" | ";" | CONTROL | NEWLINE+ ) ~ ANY) }
+FOLDABLE_QUOTED_CHARACTER = { ( NEWLINE+ ~ ( " " | "\t" ) ) | ( !( "\"" | CONTROL | NEWLINE+ ) ~ ANY) }
+
+
+component = {
+    ^"BEGIN:" ~ PUSH(name) ~ NEWLINE+
+    ~ ( property | component )*
+    ~ ^"END:" ~ POP ~ NEWLINE+
+}
+
+
+property = { !(^"END" | ^"BEGIN") ~ name ~ (^";" ~ param)* ~ ^":" ~ property_value ~ NEWLINE+ }
+property_value = { ( !( NEWLINE+ ) ~ ANY)*  }
+
+param = { name ~ ^"=" ~ param_value ~ (^"," ~ param_value)* }
+param_value = { quoted_string | safe_string }
