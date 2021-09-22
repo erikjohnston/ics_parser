@@ -1011,17 +1011,17 @@ impl FromStr for RecurRule {
 
                         let weekday = if val.ends_with("MO") {
                             Weekday::Mon
-                        } else if value.ends_with("TU") {
+                        } else if val.ends_with("TU") {
                             Weekday::Tue
-                        } else if value.ends_with("WE") {
+                        } else if val.ends_with("WE") {
                             Weekday::Wed
-                        } else if value.ends_with("TH") {
+                        } else if val.ends_with("TH") {
                             Weekday::Thu
-                        } else if value.ends_with("FR") {
+                        } else if val.ends_with("FR") {
                             Weekday::Fri
-                        } else if value.ends_with("SA") {
+                        } else if val.ends_with("SA") {
                             Weekday::Sat
-                        } else if value.ends_with("SU") {
+                        } else if val.ends_with("SU") {
                             Weekday::Sun
                         } else {
                             bail!("Invalid recur rule option: {}", part)
