@@ -335,7 +335,7 @@ impl From<parser::Parameter> for Parameter {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct ParameterSet {
     parameters: Vec<Parameter>,
 }

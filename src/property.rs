@@ -411,10 +411,10 @@ impl TryFrom<parser::Property> for Property {
                 value: DateOrDateTime::parse_from(&property.value, &parameters)?,
                 parameters,
             }),
-            // "RDATE" => Property::RecurrenceDateTimes(PropertyValue {
-            //     value: DateDateTimeOrPeriod::parse_from(&property.value, &parameters)?,
-            //     parameters,
-            // }),
+            "RDATE" => Property::RecurrenceDateTimes(PropertyValue {
+                value: DateDateTimeOrPeriod::parse_from(&property.value, &parameters)?,
+                parameters,
+            }),
             "RRULE" => Property::RecurrenceRule(PropertyValue {
                 value: property.value.parse()?,
                 parameters,
@@ -549,6 +549,19 @@ pub enum DateDateTimeOrPeriod {
     Period(Period),
 }
 
+impl DateDateTimeOrPeriod {
+    fn parse_from(value: &str, params: &ParameterSet) -> Result<Self, Error> {
+        if let Ok(period) = Period::parse_from(value, params) {
+            Ok(DateDateTimeOrPeriod::Period(period))
+        } else {
+            Ok(match DateOrDateTime::parse_from(value, params)? {
+                DateOrDateTime::Date(d) => DateDateTimeOrPeriod::Date(d),
+                DateOrDateTime::DateTime(d) => DateDateTimeOrPeriod::DateTime(d),
+            })
+        }
+    }
+}
+
 impl TryFrom<DateDateTimeOrPeriod> for NaiveDate {
     type Error = Error;
 
@@ -592,6 +605,65 @@ pub enum DateTimeOrDuration {
 pub struct Period {
     pub start: IcalDateTime,
     pub duration: Duration,
+}
+
+impl Period {
+    fn parse_from(value: &str, params: &ParameterSet) -> Result<Self, Error> {
+        let (start, end) = value.split_once('/').context("invalid period")?;
+
+        println!("start {}, end {}", start, end);
+
+        let start = match DateOrDateTime::parse_from(start, params)? {
+            DateOrDateTime::Date(_) => bail!("Invalid start time in period"),
+            DateOrDateTime::DateTime(d) => d,
+        };
+
+        let r = regex::Regex::new("(-?P)(?:T?([0-9]+)([WDHMS]))+").unwrap();
+
+        if let Some(captures) = r.captures(end) {
+            let mut iter = captures.iter();
+            iter.next(); // skip full match
+            let period = iter
+                .next()
+                .expect("regex failed to find group")
+                .expect("regex failed to find group");
+
+            let mut duration = Duration::seconds(0);
+
+            for (digits, length) in iter.tuples() {
+                let duration_value: i64 = digits
+                    .expect("regex failed to find group")
+                    .as_str()
+                    .parse()?;
+
+                let duration_part = match length.expect("regex failed to find group").as_str() {
+                    "W" => Duration::weeks(duration_value),
+                    "D" => Duration::days(duration_value),
+                    "H" => Duration::hours(duration_value),
+                    "M" => Duration::minutes(duration_value),
+                    "S" => Duration::seconds(duration_value),
+                    _ => bail!("invalid period duration"),
+                };
+
+                duration = duration_part + duration;
+            }
+
+            if period.as_str() == "-P" {
+                duration = duration * -1;
+            }
+
+            Ok(Period { start, duration })
+        } else {
+            let end = match DateOrDateTime::parse_from(end, params)? {
+                DateOrDateTime::Date(_) => bail!("Invalid start time in period"),
+                DateOrDateTime::DateTime(d) => d,
+            };
+
+            let duration = end.sub(&start)?;
+
+            Ok(Period { start, duration })
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -801,6 +873,7 @@ impl RecurRule {
             count: 0,
             max_count,
             until,
+            previous_date: None,
         }
     }
 
@@ -842,10 +915,12 @@ impl RecurRule {
             count: 0,
             max_count,
             until,
+            previous_date: None,
         };
 
         iter.merge(rdates)
             .filter(move |d| exdates.iter().all(|ex| !d.eq(ex)))
+            .dedup()
             .map(move |d| T::from_naive(d, &offseter))
     }
 
@@ -864,6 +939,7 @@ impl RecurRule {
     ) -> impl Iterator<Item = T> + 'a
     where
         T: PartialEq<E>,
+        T::Naive: PartialEq,
     {
         let (max_count, until) = match self.end_condition {
             EndCondition::Count(c) => (Some(c), None),
@@ -887,10 +963,12 @@ impl RecurRule {
             count: 0,
             max_count,
             until,
+            previous_date: None,
         };
 
         iter.map(move |d| T::from_naive(d, &offseter))
             .merge(rdates)
+            .dedup()
             .filter(move |d| exdates.iter().all(|ex| !d.eq(ex)))
     }
 }
@@ -1227,7 +1305,7 @@ impl Expandable for NaiveDateTime {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct NaivePeriod<T: Expandable> {
     duration: Duration,
     start: T,
@@ -1373,11 +1451,12 @@ pub struct RecurIter<T> {
     max_count: Option<u64>,
     until: Option<NaiveDateTime>,
     count: u64,
+    previous_date: Option<T>,
 }
 
 impl<T> Iterator for RecurIter<T>
 where
-    T: Expandable,
+    T: Expandable + PartialEq,
 {
     type Item = T;
 
@@ -1407,7 +1486,11 @@ where
             }
 
             if !date_set.is_empty() {
-                self.queue = date_set.into_iter().collect();
+                self.queue = date_set
+                    .into_iter()
+                    .filter(|date| Some(*date) != self.previous_date)
+                    .dedup()
+                    .collect();
             }
         }
 
@@ -1424,6 +1507,8 @@ where
             }
 
             self.count += 1;
+
+            self.previous_date = Some(to_return);
 
             return Some(to_return);
         }
@@ -1865,6 +1950,14 @@ where
 mod tests {
     use super::*;
     use crate::components::{OffsetRule, VTimeZone};
+
+    #[test]
+    fn parse_period() {
+        Period::parse_from("20000101T000000/PT1H", &ParameterSet::default()).unwrap();
+        Period::parse_from("20000101T000000/-PT1H", &ParameterSet::default()).unwrap();
+        Period::parse_from("20000101T000000/P15DT5H0M20S", &ParameterSet::default()).unwrap();
+        Period::parse_from("20000101T000000/20000101T010000", &ParameterSet::default()).unwrap();
+    }
 
     #[test]
     fn test_advance_date() {
