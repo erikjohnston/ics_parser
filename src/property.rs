@@ -231,8 +231,8 @@ pub enum Property {
     URL(PropertyValue<Url>),
     UID(PropertyValue<String>),
 
-    ExceptionDateTimes(PropertyValue<Vec<DateOrDateTime>>),
-    RecurrenceDateTimes(PropertyValue<Vec<DateDateTimeOrPeriod>>),
+    ExceptionDateTimes(PropertyValue<DateOrDateTime>),
+    RecurrenceDateTimes(PropertyValue<DateDateTimeOrPeriod>),
     RecurrenceRule(PropertyValue<RecurRule>),
 
     Action(PropertyValue<String>),
@@ -407,8 +407,14 @@ impl TryFrom<parser::Property> for Property {
                 value: unescape(&property.value)?,
                 parameters,
             }),
-            // "EXDATE" => todo!(),
-            // "RDATE" => todo!(),
+            "EXDATE" => Property::ExceptionDateTimes(PropertyValue {
+                value: DateOrDateTime::parse_from(&property.value, &parameters)?,
+                parameters,
+            }),
+            // "RDATE" => Property::RecurrenceDateTimes(PropertyValue {
+            //     value: DateDateTimeOrPeriod::parse_from(&property.value, &parameters)?,
+            //     parameters,
+            // }),
             "RRULE" => Property::RecurrenceRule(PropertyValue {
                 value: property.value.parse()?,
                 parameters,

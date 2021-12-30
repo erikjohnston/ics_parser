@@ -393,8 +393,8 @@ impl TryFrom<parser::Component> for VEvent {
                 Property::UID(value) => uid = Some(value.value),
                 Property::DateTimeStamp(value) => dtstamp = Some(value.value),
                 Property::Start(value) => dtstart = Some(value.value),
-                Property::RecurrenceDateTimes(value) => rdates = value.value,
-                Property::ExceptionDateTimes(value) => exdates = value.value,
+                Property::RecurrenceDateTimes(value) => rdates.push(value.value),
+                Property::ExceptionDateTimes(value) => exdates.push(value.value),
                 Property::Duration(value) => duration = Some(value.value),
                 Property::End(value) => dtend = Some(value.value),
                 Property::RecurrenceID(value) => recur_id = Some(value.value),
@@ -712,27 +712,23 @@ impl TryFrom<parser::Component> for OffsetRule {
                 Property::RecurrenceRule(value) => recur = Some(value.value),
                 Property::TimeZoneName(value) => name = Some(value.value),
                 Property::RecurrenceDateTimes(value) => {
-                    for v in &value.value {
-                        if let DateDateTimeOrPeriod::DateTime(IcalDateTime::Local(d)) = v {
-                            rdates.push(*d)
-                        } else {
-                            bail!(
-                                "Unexpected type for RDATE in {}",
-                                component.name.to_ascii_uppercase()
-                            )
-                        }
+                    if let DateDateTimeOrPeriod::DateTime(IcalDateTime::Local(d)) = value.value {
+                        rdates.push(d)
+                    } else {
+                        bail!(
+                            "Unexpected type for RDATE in {}",
+                            component.name.to_ascii_uppercase()
+                        )
                     }
                 }
                 Property::ExceptionDateTimes(value) => {
-                    for v in &value.value {
-                        if let DateOrDateTime::DateTime(IcalDateTime::Local(d)) = v {
-                            exdates.push(*d)
-                        } else {
-                            bail!(
-                                "Unexpected type for EXDATE in {}",
-                                component.name.to_ascii_uppercase()
-                            )
-                        }
+                    if let DateOrDateTime::DateTime(IcalDateTime::Local(d)) = value.value {
+                        exdates.push(d)
+                    } else {
+                        bail!(
+                            "Unexpected type for EXDATE in {}",
+                            component.name.to_ascii_uppercase()
+                        )
                     }
                 }
                 p => properties.push(p),
