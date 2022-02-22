@@ -127,8 +127,10 @@ impl Parameter {
         let mut values = Vec::new();
         for inner_pair in pair.into_inner() {
             match inner_pair.as_rule() {
-                Rule::name => name = Some(inner_pair.as_str().to_string()),
-                Rule::param_value => values.push(inner_pair.as_str().trim_matches('"').to_string()),
+                Rule::name => name = Some(strip_folds(inner_pair.as_str())),
+                Rule::param_value => {
+                    values.push(strip_folds(inner_pair.as_str().trim_matches('"')))
+                }
                 _ => bail!("Unexpected type {:?}", inner_pair.as_rule()),
             }
         }
@@ -161,5 +163,56 @@ impl Parameter {
             .join(",");
 
         format!("{}={}", self.name, values)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use anyhow::Result;
+
+    use super::*;
+
+    #[test]
+    fn parameter_fold() -> Result<()> {
+        let test_cases = [
+            "CN=Test Foo",
+            "CN=Test\n  Foo",
+            "CN=Test\n\t Foo",
+            "CN=Test\r\n  Foo",
+            "CN\n =Test Foo",
+        ];
+        for test_case in test_cases {
+            let mut pairs = CalParser::parse(Rule::param, test_case)?;
+
+            let param = Parameter::from_pair(pairs.next().unwrap())?;
+
+            assert_eq!(param.name, "CN");
+            assert_eq!(param.values, &["Test Foo"]);
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn property_fold() -> Result<()> {
+        let test_cases = [
+            "ORGANIZER;CN=Test Foo:mailto:test@example.com\n",
+            "ORGANIZER;CN=Test\n  Foo:mailto:test@example.com\n",
+            "ORGANIZER;CN=Test Foo:\n mailto:test@example.com\n",
+            "ORGANIZER;\n CN=Test Foo:mailto:test@example.com\n",
+            "ORGANIZER\n ;CN=Test Foo:mailto:test@example.com\n",
+        ];
+        for test_case in test_cases {
+            let mut pairs = CalParser::parse(Rule::property, test_case)?;
+
+            let property = Property::from_pair(pairs.next().unwrap())?;
+
+            assert_eq!(property.name, "ORGANIZER");
+            assert_eq!(property.value, "mailto:test@example.com");
+
+            assert_eq!(property.parameters.len(), 1);
+            assert_eq!(property.parameters[0].name, "CN");
+            assert_eq!(property.parameters[0].values, &["Test Foo"]);
+        }
+        Ok(())
     }
 }
