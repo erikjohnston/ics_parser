@@ -82,8 +82,10 @@ impl TryFrom<parser::Component> for VCalendar {
             version: version.ok_or_else(|| format_err!("Missing VERSION field in offset rule"))?,
             events: events
                 .into_iter()
-                .map(|(uid, events)| (uid, EventCollection::new(events)))
-                .collect(),
+                .map(|(uid, events)| -> Result<_, Error> {
+                    Ok((uid, EventCollection::new(events)?))
+                })
+                .collect::<Result<_, _>>()?,
             timezones,
             properties,
         })
@@ -939,7 +941,7 @@ pub struct EventCollection {
 }
 
 impl EventCollection {
-    fn new(events: Vec<VEvent>) -> EventCollection {
+    fn new(events: Vec<VEvent>) -> Result<EventCollection, Error> {
         let mut base_event = None;
         let mut overrides = HashMap::new();
 
@@ -978,12 +980,12 @@ impl EventCollection {
             }
         }
 
-        let base_event = base_event.expect("base event");
+        let base_event = base_event.context("missing base event")?;
 
-        EventCollection {
+        Ok(EventCollection {
             base_event,
             overrides,
-        }
+        })
     }
 
     pub fn recur_iter<'a>(
