@@ -1,5 +1,5 @@
 use crate::{
-    parser,
+    parser::{self, Component},
     property::{
         DateDateTimeOrPeriod, DateOrDateTime, EndCondition, IcalDateTime, Offseter, Property,
         RecurRule, ToNaive, ToNaivePeriod,
@@ -48,13 +48,14 @@ impl TryFrom<parser::Component> for VCalendar {
     fn try_from(component: parser::Component) -> Result<Self, Self::Error> {
         ensure!(component.name.to_ascii_uppercase() == "VCALENDAR");
 
-        let mut events: BTreeMap<String, Vec<VEvent>> = BTreeMap::new();
+        let mut vevents = Vec::new();
         let mut timezones = Vec::new();
         for component in component.sub_components {
             match &component.name.to_ascii_uppercase() as &str {
                 "VEVENT" => {
-                    let event: VEvent = component.try_into().with_context(|| "parsing VEVENT")?;
-                    events.entry(event.uid.clone()).or_default().push(event);
+                    // We parse VEvents after everything else, so that it can
+                    // access the timezone info.
+                    vevents.push(component);
                 }
                 "VTIMEZONE" => {
                     timezones.push(component.try_into().with_context(|| "parsing VTIMEZONE")?)
@@ -77,18 +78,27 @@ impl TryFrom<parser::Component> for VCalendar {
             }
         }
 
-        Ok(VCalendar {
+        let mut vcalendar = VCalendar {
             prodid: prodid.ok_or_else(|| format_err!("Missing PRODID field in offset rule"))?,
             version: version.ok_or_else(|| format_err!("Missing VERSION field in offset rule"))?,
-            events: events
-                .into_iter()
-                .map(|(uid, events)| -> Result<_, Error> {
-                    Ok((uid, EventCollection::new(events)?))
-                })
-                .collect::<Result<_, _>>()?,
+            events: BTreeMap::new(),
             timezones,
             properties,
-        })
+        };
+
+        let mut events: BTreeMap<String, Vec<VEvent>> = BTreeMap::new();
+        for component in vevents {
+            let event = VEvent::try_from_component(component, &vcalendar)
+                .with_context(|| "parsing VEVENT")?;
+            events.entry(event.uid.clone()).or_default().push(event);
+        }
+
+        vcalendar.events = events
+            .into_iter()
+            .map(|(uid, events)| -> Result<_, Error> { Ok((uid, EventCollection::new(events)?)) })
+            .collect::<Result<_, _>>()?;
+
+        Ok(vcalendar)
     }
 }
 
@@ -364,10 +374,15 @@ pub enum Timings {
     },
 }
 
-impl TryFrom<parser::Component> for VEvent {
-    type Error = Error;
-
-    fn try_from(component: parser::Component) -> Result<Self, Self::Error> {
+impl VEvent {
+    /// Try to convert the component into a [`VEvent`], in the context of the
+    /// given calendar.
+    ///
+    /// We pass in the calendar mainly so they have access to timezone information.
+    fn try_from_component(
+        component: parser::Component,
+        calendar: &VCalendar,
+    ) -> Result<Self, Error> {
         ensure!(component.name.to_ascii_uppercase() == "VEVENT");
 
         // TODO: Handle sub compontents
@@ -441,7 +456,7 @@ impl TryFrom<parser::Component> for VEvent {
                     (DateOrDateTime::DateTime(start), DateOrDateTime::DateTime(recur)) => recur
                         .sub(&start)
                         .with_context(|| format!("calculating recur ID offset for {}", uid))?,
-                    _ => bail!("VEVENT has different types for DTSTART and DTEND"),
+                    _ => bail!("VEVENT has different types for DTSTART and RECURRENCE-ID"),
                 });
             } else {
                 bail!("VEVENT has a RECURRENCE-ID without DTSTART")
