@@ -434,7 +434,7 @@ impl VEvent {
                 duration = Some(match (dtstart.clone(), dtend) {
                     (DateOrDateTime::Date(start), DateOrDateTime::Date(end)) => end - start,
                     (DateOrDateTime::DateTime(start), DateOrDateTime::DateTime(end)) => end
-                        .sub(&start)
+                        .sub(&start, Some(calendar))
                         .with_context(|| format!("calculating duration for {}", uid))?,
                     _ => bail!("VEVENT has different types for DTSTART and DTEND"),
                 });
@@ -454,7 +454,7 @@ impl VEvent {
                 recur_offset = Some(match (dtstart.clone(), recur_id) {
                     (DateOrDateTime::Date(start), DateOrDateTime::Date(recur)) => recur - start,
                     (DateOrDateTime::DateTime(start), DateOrDateTime::DateTime(recur)) => recur
-                        .sub(&start)
+                        .sub(&start, Some(calendar))
                         .with_context(|| format!("calculating recur ID offset for {}", uid))?,
                     _ => bail!("VEVENT has different types for DTSTART and RECURRENCE-ID"),
                 });

@@ -3,7 +3,7 @@ use std::{fs::File, io::Read};
 use ics_parser::parser;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut file = File::open("example.ics")?;
+    let mut file = File::open("~/temp/kegan.ics")?;
     let mut data = String::new();
     file.read_to_string(&mut data)?;
 

@@ -1,6 +1,6 @@
 use std::{collections::VecDeque, convert::TryFrom, fmt::Debug, ops::Add, str::FromStr};
 
-use crate::unescape::unescape;
+use crate::{components::VCalendar, unescape::unescape};
 use anyhow::{bail, format_err, Context, Error};
 use chrono::{
     Date, DateTime, Datelike, Duration, FixedOffset, NaiveDate, NaiveDateTime, TimeZone, Timelike,
@@ -659,7 +659,7 @@ impl Period {
                 DateOrDateTime::DateTime(d) => d,
             };
 
-            let duration = end.sub(&start)?;
+            let duration = end.sub(&start, None)?;
 
             Ok(Period { start, duration })
         }
@@ -674,15 +674,58 @@ pub enum IcalDateTime {
 }
 
 impl IcalDateTime {
-    pub fn sub(&self, other: &IcalDateTime) -> Result<Duration, Error> {
-        Ok(match (self, other) {
-            (IcalDateTime::Local(left), IcalDateTime::Local(right)) => *left - *right,
-            (IcalDateTime::Utc(left), IcalDateTime::Utc(right)) => *left - *right,
-            (IcalDateTime::TZ { date: left, .. }, IcalDateTime::TZ { date: right, .. }) => {
-                *left - *right
+    /// Return the duration between to IcalDateTime.
+    ///
+    /// If a `vcalendar` is parsed then it can correctly calculate the duration
+    /// between times with different timezones. If its not passed in then it
+    /// errors.
+    pub fn sub(
+        &self,
+        other: &IcalDateTime,
+        vcalendar: Option<&VCalendar>,
+    ) -> Result<Duration, Error> {
+        match (self, other) {
+            (IcalDateTime::Local(left), IcalDateTime::Local(right)) => return Ok(*left - *right),
+            (IcalDateTime::Utc(left), IcalDateTime::Utc(right)) => return Ok(*left - *right),
+            (
+                IcalDateTime::TZ {
+                    date: left,
+                    tzid: left_tzid,
+                },
+                IcalDateTime::TZ {
+                    date: right,
+                    tzid: right_tzid,
+                },
+            ) => {
+                if left_tzid == right_tzid {
+                    return Ok(*left - *right);
+                }
             }
-            _ => bail!("Mismatched IcalDateTime"),
-        })
+            _ => {}
+        }
+
+        let cal = vcalendar.context("Mismatched IcalDateTime")?;
+
+        let left: DateTime<FixedOffset>;
+        let right: DateTime<FixedOffset>;
+
+        match self {
+            IcalDateTime::Utc(t) => left = t.with_timezone(&FixedOffset::east(0)),
+            IcalDateTime::TZ { .. } => {
+                left = cal.get_time(self)?;
+            }
+            IcalDateTime::Local(_) => bail!("Mismatched IcalDateTime"),
+        }
+
+        match other {
+            IcalDateTime::Utc(t) => right = t.with_timezone(&FixedOffset::east(0)),
+            IcalDateTime::TZ { .. } => {
+                right = cal.get_time(self)?;
+            }
+            IcalDateTime::Local(_) => bail!("Mismatched IcalDateTime"),
+        }
+
+        Ok(left - right)
     }
 }
 
