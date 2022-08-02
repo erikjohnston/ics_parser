@@ -1,9 +1,12 @@
-use std::{fs::File, io::Read};
+use std::{
+    convert::TryInto,
+    io::{stdin, Read},
+};
 
-use ics_parser::parser;
+use ics_parser::{components::VCalendar, parser};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut file = File::open("~/temp/kegan.ics")?;
+    let mut file = stdin();
     let mut data = String::new();
     file.read_to_string(&mut data)?;
 
@@ -12,8 +15,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let components = parser::Component::from_str_to_stream(&data)?;
     for comp in components {
-        println!("{:#?}", comp);
-        println!("{}", comp.as_string());
+        let calendar: VCalendar = comp.try_into()?;
+
+        println!("Found {} events", calendar.events.len());
     }
 
     Ok(())

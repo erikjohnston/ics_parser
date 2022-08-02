@@ -960,6 +960,8 @@ impl EventCollection {
         let mut base_event = None;
         let mut overrides = HashMap::new();
 
+        let event_id = events.first().map(|e| e.uid.clone()).unwrap_or_default();
+
         for event in events {
             if !event.is_recurrence_instance {
                 base_event = Some(event);
@@ -995,7 +997,7 @@ impl EventCollection {
             }
         }
 
-        let base_event = base_event.context("missing base event")?;
+        let base_event = base_event.with_context(|| format!("missing base event: {}", event_id))?;
 
         Ok(EventCollection {
             base_event,
