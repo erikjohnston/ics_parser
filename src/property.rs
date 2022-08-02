@@ -1979,8 +1979,13 @@ fn get_start_of_week<T>(week_start: Weekday, date: T) -> T
 where
     T: ExtendedDatelike,
 {
-    let difference =
+    let mut difference =
         week_start.num_days_from_monday() as i64 - date.weekday().num_days_from_monday() as i64;
+
+    // We always want the start of the week to be *before* the given date.
+    if difference > 0 {
+        difference = difference - 7;
+    }
 
     let start_date = date + Duration::days(difference);
 
@@ -2332,6 +2337,25 @@ mod tests {
     }
 
     add_rrule_test! {
+        recur_rule_parse_every_other_week_forever, "2022-07-26T10:00:00";
+        parse "FREQ=WEEKLY;WKST=SU;INTERVAL=2;BYDAY=TU" => RecurRule {
+            frequency: Frequency::Weekly,
+            interval: 2,
+            end_condition: EndCondition::Infinite,
+            by_second: vec![],
+            by_minute: vec![],
+            by_hour: vec![],
+            by_day: vec![(None, Weekday::Tue)],
+            by_month_day: vec![],
+            by_year_day: vec![],
+            by_week_number: vec![],
+            by_month: vec![],
+            by_set_pos: vec![],
+            week_start: Weekday::Sun,
+        }
+    }
+
+    add_rrule_test! {
         recur_rule_iter_daily_for_10, "1997-09-02T09:00:00-04:00";
         finite "FREQ=DAILY;COUNT=10" => &[
             "1997-09-02T09:00:00-04:00",
@@ -2392,6 +2416,15 @@ mod tests {
             "1971-04-25T02:00:00",
             "1972-04-30T02:00:00",
             "1973-04-29T02:00:00",
+        ]
+    }
+
+    add_rrule_test! {
+        recur_rule_fortnightly, "2022-07-26T10:00:00-04:00";
+        infinite "FREQ=WEEKLY;WKST=SU;INTERVAL=2;BYDAY=TU" => &[
+            "2022-07-26T10:00:00-04:00",
+            "2022-08-09T10:00:00-04:00",
+            "2022-08-23T10:00:00-04:00",
         ]
     }
 }
