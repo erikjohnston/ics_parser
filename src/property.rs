@@ -1562,7 +1562,7 @@ where
 
 fn expand_dates<T>(recur: &RecurRule, date_set: Vec<T>) -> Vec<T>
 where
-    T: ExtendedDatelike,
+    T: ExtendedDatelike + Debug,
 {
     let mut date_set = date_set;
 
@@ -1701,7 +1701,7 @@ where
                             .iter()
                             .map(move |&s| if s > 0 { s - 1 } else { s + days_in_month })
                             .map(move |s| (s % days_in_month) as u32 + 1)
-                            .map(move |s| d.with_month(s).expect("month day expansion"))
+                            .map(move |s| d.with_day(s).expect("month day expansion"))
                     })
                     .collect()
             }
@@ -1927,7 +1927,7 @@ fn get_weeks_in_year<D: Datelike>(week_start: Weekday, date: D) -> u32 {
 
 fn get_days_in_month<D: Datelike>(date: D) -> u32 {
     for &days in &[31u32, 30, 29, 28] {
-        if date.with_month(days).is_some() {
+        if date.with_day(days).is_some() {
             return days;
         }
     }
@@ -2425,6 +2425,15 @@ mod tests {
             "2022-07-26T10:00:00-04:00",
             "2022-08-09T10:00:00-04:00",
             "2022-08-23T10:00:00-04:00",
+        ]
+    }
+
+    add_rrule_test! {
+        recur_rule_monthly, "2022-09-01T15:00:00-04:00";
+        infinite "FREQ=MONTHLY;BYMONTHDAY=1" => &[
+            "2022-09-01T15:00:00-04:00",
+            "2022-10-01T15:00:00-04:00",
+            "2022-11-01T15:00:00-04:00",
         ]
     }
 }
